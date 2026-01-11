@@ -580,7 +580,7 @@ def compare_to_community():
 import google.generativeai as genai
 
 # Configure Gemini API (set your API key as environment variable)
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', 'AIzaSyASkGzUdphHCu-R5J0lefMGCB9qQWTPyaE')
 
 
 @app.route('/api/chat', methods=['POST'])
@@ -670,7 +670,7 @@ Respond to the student's question in character as Professor Hootsworth. Keep it 
 
 from elevenlabs.client import ElevenLabs
 
-ELEVENLABS_API_KEY = os.environ.get('ELEVENLABS_API_KEY', '')
+ELEVENLABS_API_KEY = os.environ.get('ELEVENLABS_API_KEY', 'sk_949df7ef1b26bfdbdf9da237c3d8eb4de533dec179735867')
 
 @app.route('/api/speak', methods=['POST'])
 def text_to_speech():
