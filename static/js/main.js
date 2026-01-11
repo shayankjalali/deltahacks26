@@ -460,6 +460,7 @@ function drawChart(s, customData = null) {
             datasets
         },
         options: {
+            animation: false,
             responsive: true,
             plugins: {
                 legend: {
