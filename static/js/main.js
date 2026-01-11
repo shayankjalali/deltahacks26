@@ -23,7 +23,7 @@ const gameState = {
 
     results: null,
     chart: null,
-    currentAudio: null  // Track currently playing audio
+    currentAudio: null
 };
 
 // ============================================
@@ -190,6 +190,12 @@ function showDialogue() {
         btn.textContent = 'Continue →';
         btn.onclick = nextDialogue;
     }
+
+    // Show/hide back button
+    const backBtn = document.getElementById('backBtn');
+    if (backBtn) {
+        backBtn.style.display = gameState.dialogueStep > 0 ? 'inline-block' : 'none';
+    }
 }
 
 function buildInput(input) {
@@ -265,6 +271,14 @@ function nextDialogue() {
     }
 }
 
+function prevDialogue() {
+    if (gameState.dialogueStep > 0) {
+        playSound('click');
+        gameState.dialogueStep--;
+        showDialogue();
+    }
+}
+
 function saveInput() {
     const dialogues = getDialogues();
     const d = dialogues[gameState.dialogueStep];
@@ -323,7 +337,6 @@ async function calculateResults() {
 function displayResults(r) {
     document.getElementById('r-playerName').textContent = gameState.playerName;
 
-    // Loan summary - use the correct IDs from HTML
     document.getElementById('r-totalLoan').textContent = r.loan_details.total_amount.toLocaleString();
     document.getElementById('r-afterGrace').textContent = r.grace_period.balance_after_grace.toLocaleString();
     document.getElementById('r-graceInt').textContent = r.grace_period.interest_accrued.toLocaleString();
@@ -367,8 +380,6 @@ function displayResults(r) {
     }
 
     setWisdom(r);
-    
-    // Load community comparison from MongoDB
     loadCommunityComparison();
 }
 
@@ -513,7 +524,6 @@ function setupSlider(results) {
                     drawChart(results.scenarios, { breakdown: data.breakdown });
                 }
                 
-                // Update owl wisdom based on slider
                 updateOwlWisdom(extra, data.interest_saved, data.months_saved, results);
             }
         } catch (err) {
@@ -529,7 +539,6 @@ function updateOwlWisdom(extra, interestSaved, monthsSaved, results) {
     let w = '';
     
     if (extra === 0) {
-        // Default wisdom when slider is at 0
         w = setDefaultWisdom(results);
     } else if (extra <= 50) {
         w = `"${name}, even $${extra} extra per month makes a difference! You'll save $${interestSaved.toLocaleString()} and finish ${monthsSaved} months sooner. Small steps lead to great victories!"`;
@@ -632,7 +641,6 @@ function playSound(type) {
     }
 }
 
-// Volume control
 let lastVolume = 30;
 
 function setVolume(value) {
@@ -668,7 +676,6 @@ function toggleMute() {
     }
 }
 
-// Start music on first interaction
 let musicStarted = false;
 document.addEventListener('click', function initMusic() {
     if (!musicStarted) {
@@ -703,24 +710,20 @@ function restartGame() {
         car_loan_balance: 0
     };
 
-    // Destroy chart if exists
     if (gameState.chart) {
         gameState.chart.destroy();
         gameState.chart = null;
     }
     
-    // Stop any playing audio
     if (gameState.currentAudio) {
         gameState.currentAudio.pause();
         gameState.currentAudio = null;
     }
 
-    // Reset UI elements
     document.querySelectorAll('.character-option').forEach(o => o.classList.remove('selected'));
     document.getElementById('startBtn').disabled = true;
     document.getElementById('playerName').value = '';
     
-    // Reset the next button to default state
     const nextBtn = document.getElementById('nextBtn');
     nextBtn.textContent = 'Continue →';
     nextBtn.onclick = nextDialogue;
@@ -785,7 +788,7 @@ DeltaHacks 2025
 }
 
 // ============================================
-// GEMINI AI CHAT WITH PROFESSOR HOOTSWORTH
+// GEMINI AI CHAT
 // ============================================
 
 async function sendChat() {
@@ -796,7 +799,6 @@ async function sendChat() {
     
     const messagesContainer = document.getElementById('chatMessages');
     
-    // Add user message
     messagesContainer.innerHTML += `
         <div class="chat-message user">
             <span class="chat-icon">👤</span>
@@ -804,10 +806,8 @@ async function sendChat() {
         </div>
     `;
     
-    // Clear input
     input.value = '';
     
-    // Add loading message
     messagesContainer.innerHTML += `
         <div class="chat-message owl loading" id="loadingMsg">
             <span class="chat-icon">🦉</span>
@@ -821,7 +821,6 @@ async function sendChat() {
         </div>
     `;
     
-    // Scroll to bottom
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
     
     try {
@@ -839,10 +838,8 @@ async function sendChat() {
         
         const data = await response.json();
         
-        // Remove loading message
         document.getElementById('loadingMsg').remove();
         
-        // Add owl response with speak button
         const msgId = 'owl-msg-' + Date.now();
         messagesContainer.innerHTML += `
             <div class="chat-message owl" id="${msgId}">
@@ -854,10 +851,8 @@ async function sendChat() {
             </div>
         `;
         
-        // Store the text for speaking
         document.getElementById(msgId).dataset.text = data.response;
         
-        // Scroll to bottom
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
         
     } catch (error) {
@@ -883,28 +878,24 @@ function escapeHtml(text) {
 // ELEVENLABS TEXT-TO-SPEECH
 // ============================================
 
-// Speak the current dialogue text
 async function speakDialogue() {
     const dialogueEl = document.getElementById('dialogueText');
     const btn = document.getElementById('dialogueSpeakBtn');
     
     if (!dialogueEl) return;
     
-    // Get plain text (strip HTML tags)
     const text = dialogueEl.innerText || dialogueEl.textContent;
     
     if (!text) return;
     
-    // Stop any currently playing audio
     if (gameState.currentAudio) {
         gameState.currentAudio.pause();
         gameState.currentAudio = null;
         btn.textContent = '🔊';
         btn.classList.remove('playing');
-        return; // Just stop if already playing
+        return;
     }
     
-    // Show loading state
     btn.textContent = '⏳';
     btn.classList.add('loading');
     
@@ -919,22 +910,18 @@ async function speakDialogue() {
             throw new Error('Speech generation failed');
         }
         
-        // Get audio blob
         const audioBlob = await response.blob();
         const audioUrl = URL.createObjectURL(audioBlob);
         
-        // Create and play audio
         const audio = new Audio(audioUrl);
         gameState.currentAudio = audio;
         
-        // Update button to playing state
         btn.textContent = '⏹️';
         btn.classList.remove('loading');
         btn.classList.add('playing');
         
         audio.play();
         
-        // Reset button when audio ends
         audio.onended = () => {
             btn.textContent = '🔊';
             btn.classList.remove('playing');
@@ -956,18 +943,15 @@ async function speakText(msgId) {
     
     if (!text) return;
     
-    // Stop any currently playing audio
     if (gameState.currentAudio) {
         gameState.currentAudio.pause();
         gameState.currentAudio = null;
-        // Reset all speak buttons
         document.querySelectorAll('.speak-btn').forEach(b => {
             b.textContent = '🔊';
             b.classList.remove('playing');
         });
     }
     
-    // Show loading state
     btn.textContent = '⏳';
     btn.classList.add('loading');
     
@@ -982,22 +966,18 @@ async function speakText(msgId) {
             throw new Error('Speech generation failed');
         }
         
-        // Get audio blob
         const audioBlob = await response.blob();
         const audioUrl = URL.createObjectURL(audioBlob);
         
-        // Create and play audio
         const audio = new Audio(audioUrl);
         gameState.currentAudio = audio;
         
-        // Update button to playing state
         btn.textContent = '⏹️';
         btn.classList.remove('loading');
         btn.classList.add('playing');
         
         audio.play();
         
-        // Reset button when audio ends
         audio.onended = () => {
             btn.textContent = '🔊';
             btn.classList.remove('playing');
@@ -1005,7 +985,6 @@ async function speakText(msgId) {
             URL.revokeObjectURL(audioUrl);
         };
         
-        // Allow stopping
         btn.onclick = () => {
             if (gameState.currentAudio) {
                 gameState.currentAudio.pause();
@@ -1023,7 +1002,6 @@ async function speakText(msgId) {
         alert('Could not generate speech. Check if ElevenLabs API key is set.');
     }
 }
-
 
 // ============================================
 // MONGODB - SAVE & LOAD PLANS
@@ -1065,7 +1043,6 @@ async function savePlanToMongo() {
     }
 }
 
-
 async function loadSavedPlan() {
     const planCode = document.getElementById('loadPlanCode').value.trim();
     
@@ -1079,15 +1056,12 @@ async function loadSavedPlan() {
         const data = await response.json();
         
         if (data.success && data.plan) {
-            // Load form data into gameState
             gameState.formData = { ...gameState.formData, ...data.plan.form_data };
             gameState.results = data.plan.results;
             gameState.playerName = data.plan.plan_name || 'Student';
             
-            // Auto-select first character
             selectCharacter(0);
             
-            // Skip dialogue and go straight to results if we have them
             if (gameState.results) {
                 showScreen('screen-results');
                 displayResults(gameState.results);
@@ -1104,9 +1078,8 @@ async function loadSavedPlan() {
     }
 }
 
-
 // ============================================
-// MONGODB - COMMUNITY STATS & COMPARISON
+// MONGODB - COMMUNITY STATS
 // ============================================
 
 async function loadCommunityComparison() {
@@ -1118,7 +1091,6 @@ async function loadCommunityComparison() {
     }
     
     try {
-        // Get comparison data
         const response = await fetch('/api/community/compare', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1133,7 +1105,6 @@ async function loadCommunityComparison() {
         if (data.success) {
             let html = '<div class="comparison-grid">';
             
-            // Your loan
             html += `
                 <div class="comparison-box your-loan">
                     <div class="comparison-label">Your OSAP Loan</div>
@@ -1141,7 +1112,6 @@ async function loadCommunityComparison() {
                 </div>
             `;
             
-            // Overall average
             if (data.overall_average) {
                 const overallDiff = data.overall_percent;
                 const overallClass = overallDiff > 0 ? 'above' : 'below';
@@ -1157,7 +1127,6 @@ async function loadCommunityComparison() {
                 `;
             }
             
-            // Field average
             if (data.field_average) {
                 const fieldDiff = data.field_percent;
                 const fieldClass = fieldDiff > 0 ? 'above' : 'below';
@@ -1176,7 +1145,6 @@ async function loadCommunityComparison() {
             
             html += '</div>';
             
-            // Add insights
             if (data.overall_average) {
                 const insight = data.vs_overall === 'above' 
                     ? '📈 Your debt is higher than average. Consider aggressive repayment!'
@@ -1200,7 +1168,6 @@ async function loadCommunityComparison() {
     }
 }
 
-
 function getFieldName(field) {
     const fieldNames = {
         'engineering': 'Engineering',
@@ -1216,7 +1183,6 @@ function getFieldName(field) {
     };
     return fieldNames[field] || 'General';
 }
-
 
 function formatNumber(num) {
     return Math.round(num).toLocaleString();
