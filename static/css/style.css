@@ -613,7 +613,7 @@ body {
 .dialogue-footer {
     padding: 15px 20px 15px 45px;
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
     background: rgba(139,115,85,0.1);
     border-top: 2px dashed rgba(139,115,85,0.3);
 }
