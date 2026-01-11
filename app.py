@@ -36,7 +36,7 @@ app = Flask(__name__)
 
 from pymongo import MongoClient
 
-MONGODB_URI = os.environ.get('MONGODB_URI', 'mongodb+srv://shayanjalali_db_user:LkzYWJ7EfOLhnxEA@cluster0.xu10cxz.mongodb.net/?appName=Cluster0')
+MONGODB_URI = os.environ.get('MONGODB_URI', 'mongodb+srv://shayanjalali_db_user:LkzYWJ7EfOLhnxEA@cluster0.xu10cxz.mongodb.net/?appName=Cluster0&tlsAllowInvalidCertificates=true')
 
 # Initialize MongoDB client
 try:
