@@ -1,5 +1,6 @@
 """
 OSAP Optimizer - Ontario Student Assistance Program Calculator
+Comprehensive engine for Ontario university/college students with OSAP debt.
 """
 
 from datetime import datetime
@@ -12,14 +13,15 @@ import math
 # OSAP CONSTANTS (Ontario, 2024-2025)
 # =============================================================================
 
-CURRENT_PRIME_RATE = 0.0725
-FEDERAL_RATE = CURRENT_PRIME_RATE
-PROVINCIAL_RATE = 0.0
+CURRENT_PRIME_RATE = 0.0725  # Bank of Canada prime rate as of late 2024
+FEDERAL_RATE = CURRENT_PRIME_RATE  # Federal = Prime + 0%
+PROVINCIAL_RATE = 0.0  # Ontario = 0% on provincial portion
 
-DEFAULT_FEDERAL_PORTION = 0.6
-GRACE_PERIOD_MONTHS = 6
-FORGIVENESS_YEARS = 15
+DEFAULT_FEDERAL_PORTION = 0.6  # ~60% of OSAP is federal, ~40% provincial
+GRACE_PERIOD_MONTHS = 6  # Non-repayment period after graduation
+FORGIVENESS_YEARS = 15  # Potential forgiveness after 15 years of RAP
 
+# RAP (Repayment Assistance Program) - Ontario thresholds 2024
 RAP_THRESHOLDS = {
     1: {'stage1': 40000, 'stage2': 25000},
     2: {'stage1': 50000, 'stage2': 31250},
@@ -197,6 +199,7 @@ def get_payment_recommendation(field_of_study: str, disposable_income: float) ->
         'reasoning': f"Based on {outlook} job outlook in {info['title']}"
     }
 
+
 class OSAPLoan:
     def __init__(
         self,
@@ -247,9 +250,10 @@ class OSAPLoan:
             'provincial_balance': round(self.provincial_amount, 2),
             'total_balance_after_grace': round(balance + self.provincial_amount, 2),
             'monthly_breakdown': monthly_breakdown,
-            'explanation': f'During your 6-month grace period, ${round(accrued_interest, 2)} in interest will accrue on your federal portion.'
+            'explanation': f'During your 6-month grace period, ${round(accrued_interest, 2)} in interest will accrue on your federal portion. Your provincial portion (${self.provincial_amount:,.2f}) stays at 0% interest.'
         }
-    
+
+
 class RAPCalculator:
     @staticmethod
     def check_eligibility(gross_annual_income: float, family_size: int = 1) -> Dict:
@@ -311,79 +315,322 @@ class RAPCalculator:
                 'strategy_note': 'RAP can be smart if you expect income to rise significantly.'
             }
         return results
-    
-    def calculate_payoff(loan: OSAPLoan, monthly_payment: float, include_grace_period: bool = True, extra_annual_payment: float = 0) -> Dict:
-        if include_grace_period:
-            grace = loan.calculate_grace_period_interest()
-            federal_balance = grace['federal_balance_after_grace']
-            provincial_balance = grace['provincial_balance']
-            grace_interest = grace['total_interest_accrued']
-        else:
-            federal_balance = loan.federal_amount
-            provincial_balance = loan.provincial_amount
-            grace_interest = 0
 
-        monthly_federal_interest = federal_balance * (loan.federal_rate / 12)
-        monthly_provincial_interest = provincial_balance * (loan.provincial_rate / 12)
-        min_payment = monthly_federal_interest + monthly_provincial_interest + 1
 
-        if monthly_payment < min_payment:
-            return {
-                'error': True,
-                'message': f'Payment of ${monthly_payment:.2f} is too low. Minimum ${min_payment:.2f} needed.',
-                'minimum_payment': round(min_payment, 2)
-            }
-        
-        months = 0
-        total_interest = grace_interest
-        federal_interest_paid = 0
-        provincial_interest_paid = 0
-        breakdown = []
+def calculate_payoff(loan: OSAPLoan, monthly_payment: float, include_grace_period: bool = True, extra_annual_payment: float = 0) -> Dict:
+    if include_grace_period:
+        grace = loan.calculate_grace_period_interest()
+        federal_balance = grace['federal_balance_after_grace']
+        provincial_balance = grace['provincial_balance']
+        grace_interest = grace['total_interest_accrued']
+    else:
+        federal_balance = loan.federal_amount
+        provincial_balance = loan.provincial_amount
+        grace_interest = 0
 
-        while (federal_balance > 0.01 or provincial_balance > 0.01) and months < 600:
-            months += 1
-            fed_interest = federal_balance * (loan.federal_rate / 12) if federal_balance > 0 else 0
-            prov_interest = provincial_balance * (loan.provincial_rate / 12) if provincial_balance > 0 else 0
-            total_interest += fed_interest + prov_interest
-            federal_interest_paid += fed_interest
-            provincial_interest_paid += prov_interest
+    monthly_federal_interest = federal_balance * (loan.federal_rate / 12)
+    monthly_provincial_interest = provincial_balance * (loan.provincial_rate / 12)
+    min_payment = monthly_federal_interest + monthly_provincial_interest + 1
 
-            total_remaining = federal_balance + provincial_balance
-            payment_this_month = monthly_payment
-            if extra_annual_payment > 0 and months % 12 == 0:
-                payment_this_month += extra_annual_payment
-
-            if total_remaining > 0:
-                fed_share = federal_balance / total_remaining
-                prov_share = provincial_balance / total_remaining
-                fed_payment = payment_this_month * fed_share
-                prov_payment = payment_this_month * prov_share
-                fed_principal = max(0, fed_payment - fed_interest)
-                prov_principal = max(0, prov_payment - prov_interest)
-                federal_balance = max(0, federal_balance - fed_principal)
-                provincial_balance = max(0, provincial_balance - prov_principal)
-
-            breakdown.append({
-                'month': months,
-                'federal_balance': round(federal_balance, 2),
-                'provincial_balance': round(provincial_balance, 2),
-                'total_balance': round(federal_balance + provincial_balance, 2),
-                'interest_paid': round(fed_interest + prov_interest, 2),
-                'principal_paid': round(payment_this_month - fed_interest - prov_interest, 2)
-            })
-
-        payoff_date = loan.repayment_start + relativedelta(months=months)
-
+    if monthly_payment < min_payment:
         return {
-            'error': False,
-            'months': months,
-            'years': months // 12,
-            'remaining_months': months % 12,
-            'total_interest': round(total_interest, 2),
-            'federal_interest': round(federal_interest_paid, 2),
-            'provincial_interest': round(provincial_interest_paid, 2),
-            'grace_period_interest': round(grace_interest, 2),
-            'total_paid': round(loan.total_amount + total_interest, 2),
-            'payoff_date': payoff_date.strftime('%B %Y'),
-            'breakdown': breakdown
+            'error': True,
+            'message': f'Payment of ${monthly_payment:.2f} is too low. Minimum ${min_payment:.2f} needed.',
+            'minimum_payment': round(min_payment, 2)
         }
+
+    months = 0
+    total_interest = grace_interest
+    federal_interest_paid = 0
+    provincial_interest_paid = 0
+    breakdown = []
+
+    while (federal_balance > 0.01 or provincial_balance > 0.01) and months < 600:
+        months += 1
+        fed_interest = federal_balance * (loan.federal_rate / 12) if federal_balance > 0 else 0
+        prov_interest = provincial_balance * (loan.provincial_rate / 12) if provincial_balance > 0 else 0
+        total_interest += fed_interest + prov_interest
+        federal_interest_paid += fed_interest
+        provincial_interest_paid += prov_interest
+
+        total_remaining = federal_balance + provincial_balance
+        payment_this_month = monthly_payment
+        if extra_annual_payment > 0 and months % 12 == 0:
+            payment_this_month += extra_annual_payment
+
+        if total_remaining > 0:
+            fed_share = federal_balance / total_remaining
+            prov_share = provincial_balance / total_remaining
+            fed_payment = payment_this_month * fed_share
+            prov_payment = payment_this_month * prov_share
+            fed_principal = max(0, fed_payment - fed_interest)
+            prov_principal = max(0, prov_payment - prov_interest)
+            federal_balance = max(0, federal_balance - fed_principal)
+            provincial_balance = max(0, provincial_balance - prov_principal)
+
+        breakdown.append({
+            'month': months,
+            'federal_balance': round(federal_balance, 2),
+            'provincial_balance': round(provincial_balance, 2),
+            'total_balance': round(federal_balance + provincial_balance, 2),
+            'interest_paid': round(fed_interest + prov_interest, 2),
+            'principal_paid': round(payment_this_month - fed_interest - prov_interest, 2)
+        })
+
+    payoff_date = loan.repayment_start + relativedelta(months=months)
+
+    return {
+        'error': False,
+        'months': months,
+        'years': months // 12,
+        'remaining_months': months % 12,
+        'total_interest': round(total_interest, 2),
+        'federal_interest': round(federal_interest_paid, 2),
+        'provincial_interest': round(provincial_interest_paid, 2),
+        'grace_period_interest': round(grace_interest, 2),
+        'total_paid': round(loan.total_amount + total_interest, 2),
+        'payoff_date': payoff_date.strftime('%B %Y'),
+        'breakdown': breakdown
+    }
+
+
+def calculate_payment_scenarios(
+    loan: OSAPLoan,
+    monthly_income: float,
+    monthly_expenses: float,
+    field_of_study: str = 'other',
+    years_experience: int = 0,
+    has_emergency_fund: bool = False,
+    other_debts: Dict = None
+) -> Dict:
+    disposable = monthly_income - monthly_expenses
+    annual_income = monthly_income * 12
+    rap = RAPCalculator.check_eligibility(annual_income)
+    
+    # Get field-specific salary info
+    salary_info = get_salary_info(field_of_study)
+    field_recommendation = get_payment_recommendation(field_of_study, disposable)
+
+    # FIXED: Always calculate distinct payment amounts
+    minimum = max(loan.total_amount / 120, 100)
+    
+    # Recommended: use field-specific recommendation or fallback
+    recommended = max(
+        field_recommendation['recommended_payment'] if disposable > 0 else 0,
+        minimum * 1.5,
+        minimum + 50
+    )
+    
+    # Aggressive: at least 50% more than recommended
+    aggressive = max(
+        disposable * 0.50 if disposable > 0 else 0,
+        recommended * 1.5,
+        recommended + 100
+    )
+    
+    minimum = round(minimum, 2)
+    recommended = round(recommended, 2)
+    aggressive = round(aggressive, 2)
+
+    # Advisory notes (don't change payment amounts)
+    if not has_emergency_fund:
+        emergency_note = "Consider building a 3-month emergency fund alongside debt payments"
+    elif other_debts and other_debts.get('credit_card', 0) > 0:
+        emergency_note = "Consider paying off credit card first (higher interest)"
+    else:
+        emergency_note = None
+
+    scenarios = {}
+    for name, payment in [('minimum', minimum), ('recommended', recommended), ('aggressive', aggressive)]:
+        result = calculate_payoff(loan, payment)
+        if result.get('error'):
+            scenarios[name] = result
+        else:
+            scenarios[name] = {
+                'monthly_payment': round(payment, 2),
+                'months': result['months'],
+                'years': result['years'],
+                'remaining_months': result['remaining_months'],
+                'total_interest': result['total_interest'],
+                'total_paid': result['total_paid'],
+                'payoff_date': result['payoff_date'],
+                'breakdown': result['breakdown'],
+                'grace_period_interest': result['grace_period_interest']
+            }
+
+    savings = {}
+    if not scenarios['minimum'].get('error') and not scenarios['recommended'].get('error'):
+        savings['rec_vs_min_interest'] = round(scenarios['minimum']['total_interest'] - scenarios['recommended']['total_interest'], 2)
+        savings['rec_vs_min_months'] = scenarios['minimum']['months'] - scenarios['recommended']['months']
+    if not scenarios['minimum'].get('error') and not scenarios['aggressive'].get('error'):
+        savings['agg_vs_min_interest'] = round(scenarios['minimum']['total_interest'] - scenarios['aggressive']['total_interest'], 2)
+        savings['agg_vs_min_months'] = scenarios['minimum']['months'] - scenarios['aggressive']['months']
+
+    # Enhanced income projection with salary data
+    growth = SALARY_GROWTH_CURVE.get(min(years_experience, 10), 1.0)
+    projected_salary = salary_info['entry_salary'] * growth
+    salary_in_5_years = salary_info['entry_salary'] * (1 + salary_info['growth_5yr'])
+
+    return {
+        'scenarios': scenarios,
+        'savings': savings,
+        'rap_status': rap,
+        'disposable_income': round(disposable, 2),
+        'emergency_fund_note': emergency_note,
+        'field_recommendation': field_recommendation,
+        'salary_info': {
+            'field': field_of_study,
+            'title': salary_info['title'],
+            'entry_salary': salary_info['entry_salary'],
+            'median_salary': salary_info['median_salary'],
+            'high_salary': salary_info['high_salary'],
+            'monthly_entry': salary_info['monthly_entry'],
+            'outlook': salary_info['outlook'],
+            'outlook_description': salary_info['outlook_description'],
+            'top_cities': salary_info['top_cities'],
+            'sample_jobs': salary_info['sample_jobs'],
+            'projected_current': round(projected_salary, 2),
+            'projected_5_years': round(salary_in_5_years, 2)
+        },
+        'income_projection': {
+            'field': field_of_study,
+            'current_estimated': round(projected_salary, 2),
+            'in_5_years': round(salary_in_5_years, 2)
+        },
+        'loan_details': {
+            'total': loan.total_amount,
+            'federal': loan.federal_amount,
+            'provincial': loan.provincial_amount,
+            'federal_rate': f"{loan.federal_rate * 100:.2f}%",
+            'provincial_rate': f"{loan.provincial_rate * 100:.2f}%",
+            'blended_rate': f"{loan.blended_rate * 100:.2f}%"
+        }
+    }
+
+
+def debt_vs_invest_comparison(loan: OSAPLoan, monthly_payment: float, minimum_payment: float, investment_return: float = 0.07, years: int = 10) -> Dict:
+    extra_per_month = monthly_payment - minimum_payment
+    if extra_per_month <= 0:
+        return {'error': 'Aggressive payment must be higher than minimum'}
+
+    aggressive_result = calculate_payoff(loan, monthly_payment)
+    minimum_result = calculate_payoff(loan, minimum_payment)
+
+    monthly_return = investment_return / 12
+    investment_balance = 0
+    investment_months = min(years * 12, minimum_result['months'])
+
+    for month in range(investment_months):
+        investment_balance = (investment_balance + extra_per_month) * (1 + monthly_return)
+
+    if aggressive_result['months'] < investment_months:
+        remaining_months = investment_months - aggressive_result['months']
+        investment_balance_aggressive = 0
+        for month in range(remaining_months):
+            investment_balance_aggressive = (investment_balance_aggressive + monthly_payment) * (1 + monthly_return)
+    else:
+        investment_balance_aggressive = 0
+
+    return {
+        'aggressive_payoff': {
+            'months_to_payoff': aggressive_result['months'],
+            'total_interest_paid': aggressive_result['total_interest'],
+            'investment_value_after': round(investment_balance_aggressive, 2)
+        },
+        'minimum_and_invest': {
+            'months_to_payoff': minimum_result['months'],
+            'total_interest_paid': minimum_result['total_interest'],
+            'investment_value': round(investment_balance, 2),
+            'extra_interest_cost': round(minimum_result['total_interest'] - aggressive_result['total_interest'], 2)
+        },
+        'comparison': {
+            'years_analyzed': years,
+            'assumed_return': f"{investment_return * 100:.1f}%",
+            'monthly_invested': round(extra_per_month, 2),
+            'winner': 'invest' if investment_balance > (minimum_result['total_interest'] - aggressive_result['total_interest']) else 'pay_debt',
+            'explanation': 'If investment returns exceed your loan interest rate, investing wins mathematically. But paying off debt is guaranteed.'
+        }
+    }
+
+
+def optimize_multiple_debts(osap_loan: OSAPLoan, credit_card: float = 0, credit_card_rate: float = 0.1999, line_of_credit: float = 0, loc_rate: float = 0.08, car_loan: float = 0, car_rate: float = 0.07, monthly_budget: float = 500) -> Dict:
+    debts = []
+    if credit_card > 0:
+        debts.append({'name': 'Credit Card', 'balance': credit_card, 'rate': credit_card_rate, 'min_payment': max(credit_card * 0.03, 25)})
+    if line_of_credit > 0:
+        debts.append({'name': 'Line of Credit', 'balance': line_of_credit, 'rate': loc_rate, 'min_payment': line_of_credit * (loc_rate / 12) + 50})
+    if car_loan > 0:
+        debts.append({'name': 'Car Loan', 'balance': car_loan, 'rate': car_rate, 'min_payment': car_loan / 60})
+    if osap_loan.total_amount > 0:
+        debts.append({'name': 'OSAP', 'balance': osap_loan.total_amount, 'rate': osap_loan.blended_rate, 'min_payment': max(osap_loan.total_amount / 120, 100)})
+
+    if not debts:
+        return {'error': 'No debts provided'}
+
+    debts_avalanche = sorted(debts, key=lambda x: x['rate'], reverse=True)
+    total_minimums = sum(d['min_payment'] for d in debts)
+    
+    if monthly_budget < total_minimums:
+        return {'error': f'Budget ${monthly_budget:.2f} is less than minimum payments ${total_minimums:.2f}', 'minimum_needed': round(total_minimums, 2)}
+
+    extra = monthly_budget - total_minimums
+
+    return {
+        'recommended_order': [d['name'] for d in debts_avalanche],
+        'debts': debts_avalanche,
+        'total_debt': round(sum(d['balance'] for d in debts), 2),
+        'monthly_budget': monthly_budget,
+        'total_minimums': round(total_minimums, 2),
+        'extra_to_highest_rate': round(extra, 2),
+        'strategy': f"Pay minimums on everything, put extra ${extra:.2f}/month toward {debts_avalanche[0]['name']} ({debts_avalanche[0]['rate']*100:.1f}% rate)",
+        'explanation': 'Avalanche method minimizes total interest. Pay highest-rate debt first.'
+    }
+
+
+def calculate_simple_payoff(principal, annual_rate, monthly_payment):
+    monthly_rate = annual_rate / 12
+    months = 0
+    total_interest = 0
+    breakdown = []
+    balance = principal
+
+    if monthly_rate > 0 and monthly_payment <= principal * monthly_rate:
+        return {'error': 'Payment too low', 'minimum_required': round(principal * monthly_rate + 1, 2)}
+
+    while balance > 0.01 and months < 600:
+        interest = balance * monthly_rate
+        principal_paid = min(monthly_payment - interest, balance)
+        balance -= principal_paid
+        total_interest += interest
+        months += 1
+        breakdown.append({'month': months, 'balance': round(max(balance, 0), 2), 'interest': round(interest, 2), 'principal': round(principal_paid, 2)})
+
+    return {'months': months, 'total_interest': round(total_interest, 2), 'total_paid': round(principal + total_interest, 2), 'breakdown': breakdown}
+
+
+def calculate_payments(loan_amount, income, expenses):
+    disposable = income - expenses
+    minimum = max(loan_amount / 120, 100)
+    recommended = max(disposable * 0.20, minimum * 1.5, minimum + 50)
+    aggressive = max(disposable * 0.40, recommended * 1.5, recommended + 100)
+    return {'minimum': round(minimum, 2), 'recommended': round(recommended, 2), 'aggressive': round(aggressive, 2), 'disposable_income': round(disposable, 2)}
+
+
+if __name__ == "__main__":
+    print("Testing payment scenarios with salary data...")
+    loan = OSAPLoan(total_amount=30000, federal_portion=0.6, graduation_date='2025-04-30')
+    scenarios = calculate_payment_scenarios(
+        loan, 
+        monthly_income=4000, 
+        monthly_expenses=2500, 
+        field_of_study='computer_science',
+        has_emergency_fund=False
+    )
+    print(f"\nField: {scenarios['salary_info']['title']}")
+    print(f"Entry Salary: ${scenarios['salary_info']['entry_salary']:,}")
+    print(f"Job Outlook: {scenarios['salary_info']['outlook']}")
+    print(f"Top Cities: {', '.join(scenarios['salary_info']['top_cities'])}")
+    print(f"\nMinimum: ${scenarios['scenarios']['minimum']['monthly_payment']}/month")
+    print(f"Recommended: ${scenarios['scenarios']['recommended']['monthly_payment']}/month")
+    print(f"Aggressive: ${scenarios['scenarios']['aggressive']['monthly_payment']}/month")
+    print("\nDone!")
