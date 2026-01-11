@@ -647,12 +647,10 @@ Respond to the student's question in character as Professor Hootsworth. Keep it 
         })
     
     try:
-        client = genai.Client(api_key=GEMINI_API_KEY)
+        genai.configure(api_key=GEMINI_API_KEY)
         
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=f"{system_prompt}\n\nStudent asks: {user_message}"
-        )
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        response = model.generate_content(f"{system_prompt}\n\nStudent asks: {user_message}")
         
         return jsonify({
             'response': response.text,
